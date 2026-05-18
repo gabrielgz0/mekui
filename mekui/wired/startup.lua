@@ -87,12 +87,12 @@ end
 
 local function buildButtons(dtype, device, mw, mh)
   if dtype == "fission" then
-    local step = 10
+    local step = 1
 
-    -- 2 linhas de botões, cada uma com altura 3
+    -- 2 linhas de botões, cada uma com altura 2
     -- Linha 1 (topo dos botões): Activate | SCRAM
     -- Linha 2 (base):            Burn -   | Burn +
-    local bh   = 3
+    local bh   = 2
     local half = math.floor(mw / 2)
     local row1 = mh - bh*2 + 1   -- primeira linha de botões
     local row2 = mh - bh   + 1   -- segunda linha de botões
@@ -198,7 +198,7 @@ local function renderDisplay(disp, pressedBtn)
   local mw, mh = mon.getSize()
 
   -- Área útil: reserva espaço para botões na base
-  local btnH     = (#disp.buttons > 0) and 6 or 0
+  local btnH     = (#disp.buttons > 0) and 4 or 0
   local usableMH = mh - btnH
 
   -- Calcula altura total dos widgets
@@ -213,7 +213,7 @@ local function renderDisplay(disp, pressedBtn)
   for _, e in ipairs(disp.order) do
     local w = e.widget
     local h = w.getRenderedHeight and w:getRenderedHeight() or 2
-    local rw = (w._width or 20) + ((w._border ~= false) and 2 or 0)
+    local rw = (w._width or 20) + ((w._border == true) and 2 or 0)
     local ox = math.max(1, math.floor((mw - rw) / 2) + 1)
     w:draw(mon, ox, y)
     y = y + h + 1

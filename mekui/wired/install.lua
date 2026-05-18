@@ -1,37 +1,33 @@
 --[[
   mekui/wired/install.lua
-  Instalador para o sistema cabeado (instalação única).
-  
-  USO: Cole este arquivo no computador central e execute.
-  Ou baixe direto:
-    wget https://raw.githubusercontent.com/gabrielgz0/cc-ui/main/mekui/wired/install.lua install.lua
+  Instalador com deteccao automatica de perifericos.
+  Gera o config.lua preenchido com tudo que encontrar na rede.
+
+  USO:
+    wget https://raw.githubusercontent.com/gabrielgz0/mekui/main/mekui/wired/install.lua install.lua
     install
 ]]
 
-print("=== mekui wired install ===")
-print("Instalacao unica - um computador, modem cabeado")
-print("")
-
 local BASE_URL = "https://raw.githubusercontent.com/gabrielgz0/mekui/main/mekui"
 
-local files = {
-  -- Core wired
-  "wired/startup.lua",
-  "wired/dashboards.lua",
-  -- Widgets
-  "widgets/gauge.lua",
-  "widgets/stat.lua",
-  "widgets/graph.lua",
-  -- Utils
-  "util/color.lua",
-  "util/format.lua",
+-- ════════════════════════════════════════════════════════════════
+-- Mapeamento: tipo do periférico -> tipo do dashboard
+-- ════════════════════════════════════════════════════════════════
+local DEVICE_MAP = {
+  fissionReactorLogicAdapter = "fission",
+  fusionReactorLogicAdapter  = "fusion",
+  turbineValve               = "turbine",
+  inductionPort              = "battery",
+  spsPort                    = "sps",
 }
+
+-- ════════════════════════════════════════════════════════════════
+-- DOWNLOAD
+-- ════════════════════════════════════════════════════════════════
 
 local function ensureDir(path)
   local dir = path:match("(.+)/[^/]+$")
-  if dir and not fs.exists(dir) then
-    fs.makeDir(dir)
-  end
+  if dir and not fs.exists(dir) then fs.makeDir(dir) end
 end
 
 local function download(path)
@@ -40,16 +36,13 @@ local function download(path)
   ensureDir(dest)
 
   local ok, r = pcall(http.get, url, nil, true)
-  if not ok or not r then
-    print("[FAIL] " .. path)
-    return false
-  end
+  if not ok or not r then print("[FAIL] " .. path); return false end
 
   local content = r.readAll()
   r.close()
 
   local h = fs.open(dest, "w")
-  if not h then print("[FAIL] Escrita: " .. dest); return false end
+  if not h then print("[FAIL] escrita: " .. dest); return false end
   h.write(content)
   h.close()
 
@@ -57,83 +50,173 @@ local function download(path)
   return true
 end
 
--- Cria estrutura de diretórios
-for _, d in ipairs{"mekui", "mekui/wired", "mekui/widgets", "mekui/util"} do
+-- ════════════════════════════════════════════════════════════════
+-- DETECÇÃO DE PERIFÉRICOS
+-- ════════════════════════════════════════════════════════════════
+
+local function detectPeripherals()
+  local monitors = {}
+  local devices  = {}
+
+  for _, name in ipairs(peripheral.getNames()) do
+    local t = peripheral.getType(name)
+    if t == "monitor" then
+      table.insert(monitors, name)
+    elseif DEVICE_MAP[t] then
+      table.insert(devices, { name = name, ptype = t, dtype = DEVICE_MAP[t] })
+    end
+  end
+
+  return monitors, devices
+end
+
+-- ════════════════════════════════════════════════════════════════
+-- GERAÇÃO DO CONFIG.LUA
+-- ════════════════════════════════════════════════════════════════
+
+local function generateConfig(monitors, devices)
+  local lines = {}
+
+  table.insert(lines, "--[[")
+  table.insert(lines, "  mekui/wired/config.lua")
+  table.insert(lines, "  Gerado automaticamente pelo instalador.")
+  table.insert(lines, "  Ajuste os monitors conforme necessario.")
+  table.insert(lines, "]]")
+  table.insert(lines, "")
+  table.insert(lines, "local config = {}")
+  table.insert(lines, "")
+  table.insert(lines, "config.poll_rate = 1.0")
+  table.insert(lines, "")
+  table.insert(lines, "config.displays = {")
+
+  local monIdx = 1
+
+  for _, dev in ipairs(devices) do
+    local mon = monitors[monIdx] or ("monitor_" .. (monIdx - 1))
+    monIdx = monIdx + 1
+
+    table.insert(lines, "  {")
+    table.insert(lines, '    monitor = "' .. mon .. '",')
+    table.insert(lines, '    device  = "' .. dev.name .. '",')
+    table.insert(lines, '    type    = "' .. dev.dtype .. '",')
+    table.insert(lines, "  },")
+    table.insert(lines, "")
+  end
+
+  -- Monitores sobrando sem dispositivo: deixa comentado como lembrete
+  while monIdx <= #monitors do
+    table.insert(lines, "  -- monitor disponivel sem dispositivo: " .. monitors[monIdx])
+    monIdx = monIdx + 1
+  end
+
+  table.insert(lines, "}")
+  table.insert(lines, "")
+  table.insert(lines, "return config")
+
+  return table.concat(lines, "\n")
+end
+
+-- ════════════════════════════════════════════════════════════════
+-- MAIN
+-- ════════════════════════════════════════════════════════════════
+
+print("=== mekui wired install ===")
+print("")
+
+-- Cria diretórios
+for _, d in ipairs{"mekui","mekui/wired","mekui/widgets","mekui/util"} do
   if not fs.exists(d) then fs.makeDir(d) end
 end
 
--- Baixa arquivos
+-- Baixa arquivos do repo
+local files = {
+  "wired/startup.lua",
+  "wired/dashboards.lua",
+  "widgets/gauge.lua",
+  "widgets/stat.lua",
+  "widgets/graph.lua",
+  "util/color.lua",
+  "util/format.lua",
+}
+
 print("Baixando arquivos...")
 local ok_count = 0
 for _, f in ipairs(files) do
   if download(f) then ok_count = ok_count + 1 end
 end
-print("Baixados " .. ok_count .. "/" .. #files .. " arquivos")
+print(ok_count .. "/" .. #files .. " arquivos baixados\n")
 
--- Baixa config.lua apenas se não existir (não sobrescreve configuração do usuário)
+-- Detecta periféricos
+print("Detectando perifericos na rede...")
+local monitors, devices = detectPeripherals()
+
+print("  Monitores : " .. #monitors)
+for _, m in ipairs(monitors) do print("    - " .. m) end
+
+print("  Dispositivos: " .. #devices)
+for _, d in ipairs(devices) do print("    - " .. d.name .. " (" .. d.dtype .. ")") end
+print("")
+
+-- Gera config.lua
 local configPath = "mekui/wired/config.lua"
+local skip = false
+
 if fs.exists(configPath) then
-  print("[SKIP] " .. configPath .. " (ja existe - nao sobrescrito)")
-else
-  if download("wired/config.lua") then
-    print("[OK] config.lua criado com exemplo. EDITE-O antes de rodar.")
+  print("config.lua ja existe. Sobrescrever? (s/n)")
+  local ans = read()
+  if ans ~= "s" and ans ~= "S" then
+    print("[SKIP] config.lua mantido")
+    skip = true
   end
 end
 
--- Cria /startup que chama o módulo wired
+if not skip then
+  if #devices == 0 then
+    print("[AVISO] Nenhum dispositivo encontrado na rede.")
+    print("  Verifique se o modem cabeado esta ligado e os cabos conectados.")
+  end
+  if #monitors == 0 then
+    print("[AVISO] Nenhum monitor encontrado na rede.")
+  end
+
+  local content = generateConfig(monitors, devices)
+  local h = fs.open(configPath, "w")
+  if h then
+    h.write(content)
+    h.close()
+    print("[OK] config.lua gerado automaticamente")
+  else
+    print("[FAIL] Nao foi possivel salvar config.lua")
+  end
+end
+
+-- Cria /startup
 print("\nCriando /startup...")
 if fs.exists("/startup") then
   fs.copy("/startup", "/startup.backup")
-  print("Backup salvo em /startup.backup")
+  print("  backup salvo em /startup.backup")
 end
 
-local startupContent = [[-- gerado pelo mekui wired install
--- edite mekui/wired/config.lua para configurar os displays
-
--- garante que o diretório do mekui está no path
-if not package or not package.path then
-  -- CC:Tweaked usa require() nativo; apenas define o caminho base
-end
-
-local ok, err = pcall(function()
-  -- Carrega o startup wired
-  local fn, loadErr = loadfile("mekui/wired/startup.lua")
-  if not fn then error(loadErr) end
+local startup = [[local ok, err = pcall(function()
+  local fn, e = loadfile("mekui/wired/startup.lua")
+  if not fn then error(e) end
   fn()
 end)
-
 if not ok then
   print("[mekui ERRO] " .. tostring(err))
-  print("Pressione qualquer tecla...")
   os.pullEvent("key")
 end
 ]]
 
 local h = fs.open("/startup", "w")
-if h then
-  h.write(startupContent)
-  h.close()
-  print("[OK] /startup criado")
-else
-  print("[FAIL] Nao foi possivel criar /startup")
-end
+if h then h.write(startup); h.close(); print("[OK] /startup criado") end
 
--- Mostra periféricos detectados
-print("\n=== PERIFÉRICOS DETECTADOS ===")
-local names = peripheral.getNames()
-if #names == 0 then
-  print("Nenhum periférico encontrado via rede.")
-  print("Verifique se o modem cabeado esta conectado e ativo.")
+-- Resumo
+print("\n=== CONCLUIDO ===")
+if #devices > 0 then
+  print("Config gerado com " .. #devices .. " dispositivo(s).")
+  print("Revise mekui/wired/config.lua e ajuste os monitors se necessario.")
 else
-  for _, name in ipairs(names) do
-    local t = peripheral.getType(name)
-    print("  " .. name .. " (" .. tostring(t) .. ")")
-  end
+  print("Edite mekui/wired/config.lua manualmente com seus perifericos.")
 end
-
-print("\n=== INSTALAÇÃO CONCLUIDA ===")
-print("1. Edite mekui/wired/config.lua com os nomes dos periféricos acima")
-print("2. Reinicie o computador (Ctrl+R)")
-print("")
-print("Os nomes dos monitores e reatores aparecem na lista acima.")
-print("Use-os exatamente como mostrado no config.lua")
+print("Reinicie com Ctrl+R para iniciar.")

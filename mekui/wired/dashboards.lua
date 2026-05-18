@@ -213,9 +213,9 @@ M.types.turbine = {
     if map.steam      then map.steam:setValue(pct(d.steamPercent))    end
     if map.energy     then map.energy:setValue(pct(d.energyPercent))  end
     if map.flow       then map.flow:setValue(num(d.flowRate))          end
-    if map.production then map.production:setValue(num(d.productionRate)) end
-    if map.rotor      then map.rotor:setValue(num(d.rotorSpeed))      end
-    if map.graph      then map.graph:push(d.productionRate or 0)       end
+    if map.production then map.production:setValue(num(d.productionRate * 400)) end
+    if map.rotor      then map.rotor:setValue(num(d.rotorSpeed))              end
+    if map.graph      then map.graph:push((d.productionRate or 0) * 400)      end
   end,
 
   commands = {

@@ -7,7 +7,7 @@
     - getRenderedHeight() retorna altura real para o layout
 ]]
 
-local color_util = require("mekui.util.color")
+local color_util = ( loadfile("mekui/util/color.lua") )()
 
 local G = {}
 

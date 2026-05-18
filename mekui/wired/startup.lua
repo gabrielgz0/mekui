@@ -1,49 +1,27 @@
 --[[
   mekui/wired/startup.lua
-  ╔═══════════════════════════════════════════════════════════════╗
-  ║  INSTALAÇÃO ÚNICA - copie para /startup neste computador     ║
-  ║  Edite apenas mekui/wired/config.lua para configurar.        ║
-  ╚═══════════════════════════════════════════════════════════════╝
-
-  REQUISITOS:
-    - Este computador deve ter um modem cabeado (Wired Modem)
-    - Todos os periféricos (reatores, monitores) devem estar
-      conectados na mesma rede cabeada via cabos e modems
-    - Rode peripheral.getNames() para ver os nomes disponíveis
+  INSTALACAO UNICA - copie para /startup neste computador.
+  Edite apenas mekui/wired/config.lua para configurar.
 ]]
 
 -- ════════════════════════════════════════════════════════════════
--- CARREGA DEPENDÊNCIAS
--- ════════════════════════════════════════════════════════════════
-
-local config     = require("mekui.wired.config")
-local dashboards = require("mekui.wired.dashboards")
-
--- ════════════════════════════════════════════════════════════════
--- INICIALIZA MODEM CABEADO
+-- ATIVA MODEM CABEADO antes de qualquer peripheral.getNames()
+-- O modem precisa estar aberto para a rede cabeada aparecer.
 -- ════════════════════════════════════════════════════════════════
 
 local function findWiredModem()
-  -- Prefere modem cabeado; cai no wireless se não achar
   for _, side in ipairs{"top","bottom","left","right","front","back"} do
-    if peripheral.isPresent(side) then
-      local t = peripheral.getType(side)
-      if t == "modem" then
-        local m = peripheral.wrap(side)
-        -- modem cabeado tem o método getNameLocal(); wireless não tem
-        if m and m.getNameLocal then
-          return m, side
-        end
+    if peripheral.isPresent(side) and peripheral.getType(side) == "modem" then
+      local m = peripheral.wrap(side)
+      if m and m.getNameLocal then   -- getNameLocal = exclusivo do modem cabeado
+        return m, side
       end
     end
   end
-  -- Fallback: qualquer modem
+  -- fallback: qualquer modem
   for _, side in ipairs{"top","bottom","left","right","front","back"} do
-    if peripheral.isPresent(side) then
-      local t = peripheral.getType(side)
-      if t == "modem" then
-        return peripheral.wrap(side), side
-      end
+    if peripheral.isPresent(side) and peripheral.getType(side) == "modem" then
+      return peripheral.wrap(side), side
     end
   end
   return nil, nil
@@ -51,40 +29,55 @@ end
 
 local modem, modemSide = findWiredModem()
 if not modem then
-  error("[mekui] Modem cabeado não encontrado! Conecte um Wired Modem a este computador.")
+  error("[mekui] Modem cabeado nao encontrado!")
 end
-
--- Ativa o modem para que a rede cabeada funcione
-if modem.open then modem.open(0) end
+modem.open(0)   -- abre canal; isso ativa a rede e libera peripheral.getNames()
 
 print("[mekui] Modem em: " .. modemSide)
-print("[mekui] Periféricos na rede:")
+print("[mekui] Perifericos na rede:")
 for _, name in ipairs(peripheral.getNames()) do
   print("  - " .. name)
 end
 
 -- ════════════════════════════════════════════════════════════════
+-- CARREGA DEPENDENCIAS via loadfile
+-- (require() pode nao funcionar dependendo de como o startup foi
+--  invocado; loadfile com caminho explicito e mais confiavel)
+-- ════════════════════════════════════════════════════════════════
+
+local function load_module(path)
+  local fn, err = loadfile(path)
+  if not fn then error("Erro ao carregar " .. path .. ": " .. tostring(err)) end
+  return fn()
+end
+
+local config     = load_module("mekui/wired/config.lua")
+local dashboards = load_module("mekui/wired/dashboards.lua")
+
+-- dashboards.lua usa require() internamente para widgets/utils.
+-- Garante que o path inclui a raiz do computador.
+if package and package.path and not package.path:find("/?.lua") then
+  package.path = "/?.lua;/mekui/?.lua;" .. package.path
+end
+
+-- ════════════════════════════════════════════════════════════════
 -- INICIALIZA DISPLAYS
--- Cada display = { monitor, device, dashboard, order, map }
 -- ════════════════════════════════════════════════════════════════
 
 local displays = {}
 
-for i, cfg in ipairs(config.displays) do
-  -- Conecta monitor
+for _, cfg in ipairs(config.displays) do
   local monitor = peripheral.wrap(cfg.monitor)
   if not monitor then
-    print("[AVISO] Monitor '" .. cfg.monitor .. "' não encontrado, pulando.")
+    print("[AVISO] Monitor '" .. cfg.monitor .. "' nao encontrado, pulando.")
   else
-    -- Conecta dispositivo
     local device = peripheral.wrap(cfg.device)
     if not device then
-      print("[AVISO] Dispositivo '" .. cfg.device .. "' não encontrado, pulando.")
+      print("[AVISO] Dispositivo '" .. cfg.device .. "' nao encontrado, pulando.")
     else
-      -- Carrega dashboard
       local dash = dashboards.types[cfg.type]
       if not dash then
-        print("[AVISO] Tipo de dashboard '" .. tostring(cfg.type) .. "' desconhecido, pulando.")
+        print("[AVISO] Tipo '" .. tostring(cfg.type) .. "' desconhecido, pulando.")
       else
         local order, map = dash.widgets(cfg)
         table.insert(displays, {
@@ -94,7 +87,6 @@ for i, cfg in ipairs(config.displays) do
           dash    = dash,
           order   = order,
           map     = map,
-          data    = nil,   -- últimos dados coletados
         })
         print("[OK] " .. cfg.type .. " -> " .. cfg.monitor)
       end
@@ -103,23 +95,21 @@ for i, cfg in ipairs(config.displays) do
 end
 
 if #displays == 0 then
-  error("[mekui] Nenhum display inicializado. Verifique o config.lua e os periféricos conectados.")
+  error("[mekui] Nenhum display inicializado. Verifique config.lua e perifericos.")
 end
 
 print("\n[mekui] " .. #displays .. " display(s) ativo(s). Iniciando...\n")
 
 -- ════════════════════════════════════════════════════════════════
--- RENDERIZAÇÃO DE UM DISPLAY NO MONITOR
+-- RENDERIZACAO
 -- ════════════════════════════════════════════════════════════════
 
 local function renderDisplay(disp)
   local mon = disp.monitor
   mon.setBackgroundColor(colors.black)
   mon.clear()
-
   local mw, mh = mon.getSize()
 
-  -- Calcula altura total dos widgets para centralizar
   local total_h = 0
   for _, e in ipairs(disp.order) do
     local h = e.widget.getRenderedHeight and e.widget:getRenderedHeight() or 2
@@ -128,7 +118,6 @@ local function renderDisplay(disp)
   total_h = math.max(0, total_h - 1)
 
   local y = math.max(1, math.floor((mh - total_h) / 2))
-
   for _, e in ipairs(disp.order) do
     local w = e.widget
     local h = w.getRenderedHeight and w:getRenderedHeight() or 2
@@ -138,10 +127,6 @@ local function renderDisplay(disp)
     y = y + h + 1
   end
 end
-
--- ════════════════════════════════════════════════════════════════
--- COLETA DADOS E ATUALIZA WIDGETS DE UM DISPLAY
--- ════════════════════════════════════════════════════════════════
 
 local function pollDisplay(disp)
   local ok, data = pcall(disp.dash.collect, disp.device)
@@ -155,27 +140,24 @@ end
 -- LOOP PRINCIPAL
 -- ════════════════════════════════════════════════════════════════
 
--- Primeira coleta e renderização imediata
 for _, disp in ipairs(displays) do
   pollDisplay(disp)
   renderDisplay(disp)
 end
 
-local timer = os.startTimer(config.poll_rate)
+local timer = os.startTimer(config.poll_rate or 1)
 
 while true do
   local ev = {os.pullEvent()}
 
   if ev[1] == "timer" and ev[2] == timer then
-    timer = os.startTimer(config.poll_rate)
-
+    timer = os.startTimer(config.poll_rate or 1)
     for _, disp in ipairs(displays) do
       pollDisplay(disp)
       renderDisplay(disp)
     end
 
   elseif ev[1] == "terminate" then
-    -- Limpa todos os monitores ao sair
     for _, disp in ipairs(displays) do
       disp.monitor.clear()
       disp.monitor.setCursorPos(1, 1)

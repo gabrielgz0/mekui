@@ -4,9 +4,9 @@
   Adicione novos tipos aqui sem alterar o startup.lua.
 ]]
 
-local Gauge = require("mekui.widgets.gauge")
-local Stat  = require("mekui.widgets.stat")
-local Graph = require("mekui.widgets.graph")
+local Gauge = (loadfile("mekui/widgets/gauge.lua"))()
+local Stat  = (loadfile("mekui/widgets/stat.lua"))()
+local Graph = (loadfile("mekui/widgets/graph.lua"))()
 
 local M = {}
 

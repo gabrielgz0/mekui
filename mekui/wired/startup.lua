@@ -87,55 +87,8 @@ end
 
 local function buildButtons(dtype, device, mw, mh)
   if dtype == "fission" then
-    local step = 1
-
-    -- 2 linhas de botões compactos, centralizados
-    local bh      = 2
-    local bw      = 12         -- largura de cada botão
-    local gap     = 2          -- espaçamento entre botões
-    local pair_w  = bw * 2 + gap
-    local start_x = math.floor((mw - pair_w) / 2) + 1
-    local row1    = mh - bh*2 + 1
-    local row2    = mh - bh   + 1
-
-    return {
-      -- linha 1
-      {
-        label  = "ACTIVATE",
-        x = start_x,            y = row1, w = bw, h = bh,
-        bg = colors.green, fg = colors.white,
-        action = function(dev)
-          pcall(dev.activate)
-        end,
-      },
-      {
-        label  = "SCRAM",
-        x = start_x + bw + gap, y = row1, w = bw, h = bh,
-        bg = colors.red, fg = colors.white,
-        action = function(dev)
-          pcall(dev.scram)
-        end,
-      },
-      -- linha 2
-      {
-        label  = "Burn -" .. step,
-        x = start_x,            y = row2, w = bw, h = bh,
-        bg = colors.orange, fg = colors.white,
-        action = function(dev, disp)
-          local cur = (disp.data and disp.data.burnRate) or 0
-          pcall(dev.setBurnRate, math.max(0, cur - step))
-        end,
-      },
-      {
-        label  = "Burn +" .. step,
-        x = start_x + bw + gap, y = row2, w = bw, h = bh,
-        bg = colors.lime, fg = colors.white,
-        action = function(dev, disp)
-          local cur = (disp.data and disp.data.burnRate) or 0
-          pcall(dev.setBurnRate, cur + step)
-        end,
-      },
-    }
+    -- sem botões por enquanto
+    return {}
   end
 
   -- outros tipos: sem botões por enquanto

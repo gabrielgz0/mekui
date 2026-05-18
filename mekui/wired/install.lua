@@ -12,7 +12,7 @@ print("=== mekui wired install ===")
 print("Instalacao unica - um computador, modem cabeado")
 print("")
 
-local BASE_URL = "https://raw.githubusercontent.com/gabrielgz0/cc-ui/main/mekui"
+local BASE_URL = "https://raw.githubusercontent.com/gabrielgz0/mekui/main/mekui"
 
 local files = {
   -- Core wired
